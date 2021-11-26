@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Tuple
 from optuna.pruners import HyperbandPruner
 from subprocess import _args_from_interpreter_flags
 import argparse
-from optuna.integration.wandb import WeightsAndBiasesCallback
+
+# from optuna.integration.wandb import WeightsAndBiasesCallback
 import pandas as pd
 from optuna.visualization import plot_contour
 from optuna.visualization import plot_edf
@@ -25,9 +26,10 @@ from optuna.visualization import plot_param_importances
 from optuna.visualization import plot_slice
 import yaml
 import os
+
 EPOCH = 100
 DATA_PATH = "../data"  # type your data path here that contains test, train and val directories
-RESULT_MODEL_PATH = "./result_model.pt" # result model will be saved in this path
+RESULT_MODEL_PATH = "./result_model.pt"  # result model will be saved in this path
 
 
 def search_hyperparam(trial: optuna.trial.Trial) -> Dict[str, Any]:
@@ -50,7 +52,7 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
     n_stride = 0
     MAX_NUM_STRIDE = 5
     UPPER_STRIDE = 2  # 5(224 example): 224, 112, 56, 28, 14, 7
-    n_layers = trial.suggest_int("n_layers", 8,12)
+    n_layers = trial.suggest_int("n_layers", 8, 12)
     stride = 1
     input_max = 64
     imput_min = 32
@@ -58,7 +60,9 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
     ### 몇개의 레이어를 쌓을지도 search하게 했습니다.
     for i in range(n_layers):
         out_channel = trial.suggest_int(f"{i+1}units", imput_min, input_max)
-        block = trial.suggest_categorical(f"m{i+1}", ["Conv", "DWConv","InvertedResidualv2","InvertedResidualv3"])
+        block = trial.suggest_categorical(
+            f"m{i+1}", ["Conv", "DWConv", "InvertedResidualv2", "InvertedResidualv3"]
+        )
         repeat = trial.suggest_int(f"m{i+1}/repeat", 1, 5)
         m_stride = trial.suggest_int(f"m{i+1}/stride", low=1, high=UPPER_STRIDE)
         if m_stride == 2:
@@ -69,7 +73,7 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
         if block == "Conv":
             activation = trial.suggest_categorical(f"m{i+1}/activation", ["ReLU", "Hardswish"])
             # Conv args: [out_channel, kernel_size, stride, padding, groups, activation]
-            args = [out_channel, 3,  m_stride, None,1, activation]
+            args = [out_channel, 3, m_stride, None, 1, activation]
         elif block == "DWConv":
             activation = trial.suggest_categorical(f"m{i+1}/activation", ["ReLU", "Hardswish"])
             # DWConv args: [out_channel, kernel_size, stride, padding_size, activation]
@@ -88,11 +92,11 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
             args = [kernel, t, c, se, hs, m_stride]
 
         in_features = out_channel
-        model.append([repeat,block, args])
+        model.append([repeat, block, args])
         if i % 2:
             input_max *= 2
-            input_max = min(input_max,160)
-        module_info[f'block{i+1}'] = {"type": block, "repeat": repeat, "stride": stride}
+            input_max = min(input_max, 160)
+        module_info[f"block{i+1}"] = {"type": block, "repeat": repeat, "stride": stride}
     # last layer
     last_dim = trial.suggest_int("last_dim", low=128, high=1024, step=128)
     # We can setup fixed structure as well
@@ -102,7 +106,7 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
     return model, module_info
 
 
-def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
+def objective(trial: optuna.trial.Trial, device, fp16) -> Tuple[float, int, float]:
     """Optuna objective.
     Args:
         trial
@@ -122,7 +126,6 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
         "width_multiple", [0.25, 0.5, 0.75, 1.0]
     )
     model_config["backbone"], module_info = search_model(trial)
-
     hyperparams = search_hyperparam(trial)
 
     model = Model(model_config, verbose=True)
@@ -142,22 +145,22 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
     data_config["BATCH_SIZE"] = hyperparams["BATCH_SIZE"]
     data_config["VAL_RATIO"] = 0.8
     data_config["IMG_SIZE"] = hyperparams["IMG_SIZE"]
-    data_config['INIT_LR'] = 0.0001
-    data_config['FP16'] = True
-    data_config['EPOCHS'] = 100
+    data_config["INIT_LR"] = 0.0001
+    data_config["EPOCHS"] = 100
     """이부분이 config를 저장하는 부분입니다. 위의 lr,fp16,epochs는 원래 함수에는 없지만
     config를 바로 사용할 수 있게 추가했습니다."""
+
     k = 1
-    file_name = f'search_model/model_{k}.yaml'
+    file_name = f"search_model/model_{k}.yaml"
     while os.path.exists(file_name):
         print(k)
         k += 1
-        file_name = f'search_model/model_{k}.yaml'
+        file_name = f"search_model/model_{k}.yaml"
     print(model_config)
     "model config와 data config를 저장"
-    with open(f'search_model/model_{k}.yaml', 'w') as outfile:
+    with open(f"search_model/model_{k}.yaml", "w") as outfile:
         yaml.dump(model_config, outfile)
-    with open(f'search_model/data_{k}.yaml', 'w') as outfile:
+    with open(f"search_model/data_{k}.yaml", "w") as outfile:
         yaml.dump(data_config, outfile)
 
     mean_time = check_runtime(
@@ -178,6 +181,8 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
         pct_start=0.05,
     )
 
+    scaler = torch.cuda.amp.GradScaler() if fp16 and device != torch.device("cpu") else None
+
     trainer = TorchTrainer(
         model,
         criterion,
@@ -186,6 +191,7 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
         device=device,
         verbose=1,
         model_path=RESULT_MODEL_PATH,
+        scaler=scaler,
     )
     trainer.train(train_loader, hyperparams["EPOCHS"], val_dataloader=val_loader)
     loss, f1_score, acc_percent = trainer.test(model, test_dataloader=val_loader)
@@ -230,7 +236,7 @@ def get_best_trial_with_condition(optuna_study: optuna.study.Study) -> Dict[str,
     return best_trial_
 
 
-def tune(gpu_id, storage: str = None):
+def tune(gpu_id, storage: str = None, fp16: bool = False):
     if not torch.cuda.is_available():
         device = torch.device("cpu")
     elif 0 <= gpu_id < torch.cuda.device_count():
@@ -247,13 +253,9 @@ def tune(gpu_id, storage: str = None):
         storage=rdb_storage,
         load_if_exists=True,
     )
-    study.optimize(lambda trial: objective(trial, device), n_trials=10)
-    pruned_trials = [
-        t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED
-    ]
-    complete_trials = [
-        t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
-    ]
+    study.optimize(lambda trial: objective(trial, device, fp16), n_trials=10)
+    pruned_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED]
+    complete_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
 
     print("Study statistics: ")
     print("  Number of finished trials: ", len(study.trials))
@@ -272,11 +274,14 @@ def tune(gpu_id, storage: str = None):
     best_trial = get_best_trial_with_condition(study)
     print(best_trial)
     df = study.trials_dataframe(attrs=("number", "value", "params", "state"))
-    df.to_csv("search_results.csv",index=False)
+    df.to_csv("search_results.csv", index=False)
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Optuna tuner.")
     parser.add_argument("--gpu", default=0, type=int, help="GPU id to use")
     parser.add_argument("--storage", default="", type=str, help="Optuna database storage path.")
+    parser.add_argument("--fp16", default=False, type=bool, help="train to fp16")
     args = parser.parse_args()
-    tune(args.gpu, storage=args.storage if args.storage != "" else None)
+    tune(args.gpu, storage=args.storage if args.storage != "" else None, fp16=args.fp16)

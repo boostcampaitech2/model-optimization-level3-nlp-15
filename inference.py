@@ -54,7 +54,7 @@ def get_dataloader(img_root: str, data_config: str) -> DataLoader:
     data_config = read_yaml(data_config)
 
     transform_test_args = (
-        data_confg["AUG_TEST_PARAMS"] if data_config.get("AUG_TEST_PARAMS") else None
+        data_config["AUG_TEST_PARAMS"] if data_config.get("AUG_TEST_PARAMS") else None
     )
     # Transformation for test
     transform_test = getattr(
@@ -144,19 +144,33 @@ def inference(model, dataloader, dst_path: str, t0: float) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Submit.")
     parser.add_argument(
-        "--dst", type=str, help="destination path for submit",
-        default=os.environ.get('SM_OUTPUT_DATA_DIR')
+        "--dst",
+        type=str,
+        help="destination path for submit",
+        default=os.environ.get("SM_OUTPUT_DATA_DIR"),
     )
-    parser.add_argument("--model_dir", type=str, help="Saved model root directory which includes 'best.pt', 'data.yml', and, 'model.yml'", default='/opt/ml/code/exp/latest')
-    parser.add_argument("--weight_name", type=str, help="Model weight file name. (best.pt, best.ts, ...)", default="best.pt")
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        help="Saved model root directory which includes 'best.pt', 'data.yml', and, 'model.yml'",
+        default="/opt/ml/code/exp/latest",
+    )
+    parser.add_argument(
+        "--weight_name",
+        type=str,
+        help="Model weight file name. (best.pt, best.ts, ...)",
+        default="best.pt",
+    )
     parser.add_argument(
         "--img_root",
         type=str,
         help="image folder root. e.g) 'data/test'",
-        default='/opt/ml/data/test'
+        default="/opt/ml/data/test",
     )
     args = parser.parse_args()
-    assert args.model_dir != '' and args.img_root != '', "'--model_dir' and '--img_root' must be provided."
+    assert (
+        args.model_dir != "" and args.img_root != ""
+    ), "'--model_dir' and '--img_root' must be provided."
 
     args.weight = os.path.join(args.model_dir, args.weight_name)
     args.model_config = os.path.join(args.model_dir, "model.yml")
@@ -180,4 +194,3 @@ if __name__ == "__main__":
 
     # inference
     inference(model, dataloader, args.dst, t0)
-
