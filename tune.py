@@ -152,7 +152,7 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
     while os.path.exists(file_name):
         print(k)
         k += 1
-        file_name = f'search_model/model{k}.yml'
+        file_name = f'search_model/model_{k}.yml'
     print(model_config)
     "model config와 data config를 저장"
     with open(f'search_model/model_{k}.yaml', 'w') as outfile:
