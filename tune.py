@@ -148,11 +148,11 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
     """이부분이 config를 저장하는 부분입니다. 위의 lr,fp16,epochs는 원래 함수에는 없지만
     config를 바로 사용할 수 있게 추가했습니다."""
     k = 1
-    file_name = f'search_model/model_{k}.yml'
+    file_name = f'search_model/model_{k}.yaml'
     while os.path.exists(file_name):
         print(k)
         k += 1
-        file_name = f'search_model/model_{k}.yml'
+        file_name = f'search_model/model_{k}.yaml'
     print(model_config)
     "model config와 data config를 저장"
     with open(f'search_model/model_{k}.yaml', 'w') as outfile:
