@@ -4,7 +4,6 @@
 """
 import optuna
 import torch
-from torch._C import float16
 import torch.nn as nn
 import torch.optim as optim
 from src.dataloader import create_dataloader
@@ -15,7 +14,8 @@ from typing import Any, Dict, List, Tuple
 from optuna.pruners import HyperbandPruner
 from subprocess import _args_from_interpreter_flags
 import argparse
-from optuna.integration.wandb import WeightsAndBiasesCallback
+
+# from optuna.integration.wandb import WeightsAndBiasesCallback
 import pandas as pd
 from optuna.visualization import plot_contour
 from optuna.visualization import plot_edf
@@ -126,19 +126,11 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
         "width_multiple", [0.25, 0.5, 0.75, 1.0]
     )
     model_config["backbone"], module_info = search_model(trial)
-    model_config["FP16"] = True
     hyperparams = search_hyperparam(trial)
 
     model = Model(model_config, verbose=True)
-
-    if model_config["FP16"]:
-        model.to(device=device, torch_dtype=torch.float16)
-        model.model.to(device=device, torch_dtype=torch.float16)
-        scaler = torch.cuda.amp.GradScaler()
-    else:
-        model.to(device)
-        model.model.to(device)
-        scaler = None
+    model.to(device)
+    model.model.to(device)
 
     # check ./data_configs/data.yaml for config information
     data_config: Dict[str, Any] = {}
@@ -154,7 +146,7 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
     data_config["VAL_RATIO"] = 0.8
     data_config["IMG_SIZE"] = hyperparams["IMG_SIZE"]
     data_config["INIT_LR"] = 0.0001
-
+    data_config["FP16"] = True
     data_config["EPOCHS"] = 100
     """이부분이 config를 저장하는 부분입니다. 위의 lr,fp16,epochs는 원래 함수에는 없지만
     config를 바로 사용할 수 있게 추가했습니다."""
@@ -188,6 +180,12 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
         steps_per_epoch=len(train_loader),
         epochs=hyperparams["EPOCHS"],
         pct_start=0.05,
+    )
+
+    scaler = (
+        torch.cuda.amp.GradScaler()
+        if data_config["FP16"] and device != torch.device("cpu")
+        else None
     )
 
     trainer = TorchTrainer(
