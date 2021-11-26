@@ -106,7 +106,7 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
     return model, module_info
 
 
-def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
+def objective(trial: optuna.trial.Trial, device, fp16) -> Tuple[float, int, float]:
     """Optuna objective.
     Args:
         trial
@@ -146,7 +146,6 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
     data_config["VAL_RATIO"] = 0.8
     data_config["IMG_SIZE"] = hyperparams["IMG_SIZE"]
     data_config["INIT_LR"] = 0.0001
-    data_config["FP16"] = True
     data_config["EPOCHS"] = 100
     """이부분이 config를 저장하는 부분입니다. 위의 lr,fp16,epochs는 원래 함수에는 없지만
     config를 바로 사용할 수 있게 추가했습니다."""
@@ -182,11 +181,7 @@ def objective(trial: optuna.trial.Trial, device) -> Tuple[float, int, float]:
         pct_start=0.05,
     )
 
-    scaler = (
-        torch.cuda.amp.GradScaler()
-        if data_config["FP16"] and device != torch.device("cpu")
-        else None
-    )
+    scaler = torch.cuda.amp.GradScaler() if fp16 and device != torch.device("cpu") else None
 
     trainer = TorchTrainer(
         model,
@@ -241,7 +236,7 @@ def get_best_trial_with_condition(optuna_study: optuna.study.Study) -> Dict[str,
     return best_trial_
 
 
-def tune(gpu_id, storage: str = None):
+def tune(gpu_id, storage: str = None, fp16: bool = False):
     if not torch.cuda.is_available():
         device = torch.device("cpu")
     elif 0 <= gpu_id < torch.cuda.device_count():
@@ -258,7 +253,7 @@ def tune(gpu_id, storage: str = None):
         storage=rdb_storage,
         load_if_exists=True,
     )
-    study.optimize(lambda trial: objective(trial, device), n_trials=10)
+    study.optimize(lambda trial: objective(trial, device, fp16), n_trials=10)
     pruned_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED]
     complete_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
 
@@ -287,5 +282,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optuna tuner.")
     parser.add_argument("--gpu", default=0, type=int, help="GPU id to use")
     parser.add_argument("--storage", default="", type=str, help="Optuna database storage path.")
+    parser.add_argument("--fp16", default=False, type=bool, help="train to fp16")
     args = parser.parse_args()
-    tune(args.gpu, storage=args.storage if args.storage != "" else None)
+    tune(args.gpu, storage=args.storage if args.storage != "" else None, fp16=args.fp16)
