@@ -34,4 +34,11 @@ __all__ = [
     "GlobalAvgPoolGenerator",
     "InvertedResidualv2Generator",
     "InvertedResidualv3Generator",
+    # EfficientNet Related Modules
+    "MBConv",
+    "ConvBNReLU",
+    "SwishImplementation",
+    "Swish",
+    "SqueezeExcitation",
+    "MBConvGenerator",
 ]
