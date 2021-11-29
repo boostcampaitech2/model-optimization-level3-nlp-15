@@ -37,7 +37,7 @@ def search_hyperparam(trial: optuna.trial.Trial) -> Dict[str, Any]:
     epochs = trial.suggest_int("epochs", low=20, high=20, step=2)
     img_size = trial.suggest_categorical("img_size", [96, 112, 168, 224])
     n_select = trial.suggest_int("n_select", low=0, high=6, step=2)
-    batch_size = trial.suggest_int("batch_size", low=32, high=64, step=16)
+    batch_size = trial.suggest_int("batch_size", low=32, high=128, step=32)
     return {
         "EPOCHS": epochs,
         "IMG_SIZE": img_size,
@@ -55,13 +55,13 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
     n_layers = trial.suggest_int("n_layers", 8, 12)
     stride = 1
     input_max = 64
-    imput_min = 32
+    input_min = 32
     module_info = {}
     ### 몇개의 레이어를 쌓을지도 search하게 했습니다.
     for i in range(n_layers):
-        out_channel = trial.suggest_int(f"{i+1}units", imput_min, input_max)
+        out_channel = trial.suggest_int(f"{i+1}units", input_min, input_max)
         block = trial.suggest_categorical(
-            f"m{i+1}", ["Conv", "DWConv", "InvertedResidualv2", "InvertedResidualv3"]
+            f"m{i+1}", ["Conv", "DWConv", "InvertedResidualv2", "InvertedResidualv3","MBConv"]
         )
         repeat = trial.suggest_int(f"m{i+1}/repeat", 1, 5)
         m_stride = trial.suggest_int(f"m{i+1}/stride", low=1, high=UPPER_STRIDE)
@@ -79,17 +79,21 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
             # DWConv args: [out_channel, kernel_size, stride, padding_size, activation]
             args = [out_channel, 3, 1, None, activation]
         elif block == "InvertedResidualv2":
-            c = trial.suggest_int(f"m{i+1}/v2_c", low=imput_min, high=input_max, step=16)
+            c = trial.suggest_int(f"m{i+1}/v2_c", low=input_min, high=input_max, step=16)
             t = trial.suggest_int(f"m{i+1}/v2_t", low=1, high=4)
             args = [c, t, m_stride]
         elif block == "InvertedResidualv3":
             kernel = trial.suggest_int(f"m{i+1}/kernel_size", low=3, high=5, step=2)
             t = round(trial.suggest_float(f"m{i+1}/v3_t", low=1.0, high=6.0, step=0.1), 1)
-            c = trial.suggest_int(f"m{i+1}/v3_c", low=imput_min, high=input_max, step=8)
+            c = trial.suggest_int(f"m{i+1}/v3_c", low=input_min, high=input_max, step=8)
             se = trial.suggest_categorical(f"m{i+1}/v3_se", [0, 1])
             hs = trial.suggest_categorical(f"m{i+1}/v3_hs", [0, 1])
             # k t c SE HS s
             args = [kernel, t, c, se, hs, m_stride]
+        elif block == "MBConv":
+            kernel = trial.suggest_int(f"m{i+1}/kernel_size", low=3, high=5, step=2)
+            c = trial.suggest_int(f"m{i+1}/efb0_c", low=input_min, high=input_max, step=8)
+            #args=[_,c]
 
         in_features = out_channel
         model.append([repeat, block, args])
