@@ -18,8 +18,9 @@ class MBConv(nn.Module):
     def __init__(
         self,
         in_planes,
+        hidden_dim,
         out_planes,
-        expand_ratio,
+        # expand_ratio,
         kernel_size,
         stride,
         reduction_ratio=4,
@@ -31,7 +32,7 @@ class MBConv(nn.Module):
         assert stride in [1, 2]
         assert kernel_size in [3, 5]
 
-        hidden_dim = in_planes * expand_ratio
+        # hidden_dim = in_planes * expand_ratio
         reduced_dim = max(1, in_planes // reduction_ratio)
 
         layers = []
@@ -167,13 +168,15 @@ class MBConvGenerator(GeneratorAbstract):
         module = []
         t, c, s, k = self.args  # c is equivalent as self.out_channel
         inp, oup = self.in_channel, self.out_channel
+        hidden_dim = self._get_divisible_channel(inp * t)
         for i in range(repeat):
             stride = s if i == 0 else 1
             module.append(
                 self.base_module(
                     in_planes=inp,
+                    hidden_dim=hidden_dim,
                     out_planes=oup,
-                    expand_ratio=t,
+                    # expand_ratio=t,
                     stride=stride,
                     kernel_size=k,
                 )

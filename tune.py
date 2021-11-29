@@ -93,9 +93,13 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
         elif block == "MBConv":
             kernel = trial.suggest_int(f"m{i+1}/kernel_size", low=3, high=5, step=2)
             c = trial.suggest_int(f"m{i+1}/efb0_c", low=input_min, high=input_max, step=8)
-            #args=[_,c]
+            t = round(trial.suggest_float(f"m{i+1}/v3_t", low=1.0, high=6.0, step=0.1), 1)
+            # MBConv: t, c, s, k
+            args=[t,c,m_stride,kernel]
+            print(args)
 
         in_features = out_channel
+        print(block)
         model.append([repeat, block, args])
         if i % 2:
             input_max *= 2
