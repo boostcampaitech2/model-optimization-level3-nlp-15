@@ -96,10 +96,10 @@ def search_model(trial: optuna.trial.Trial) -> List[Any]:
             t = round(trial.suggest_float(f"m{i+1}/v3_t", low=1.0, high=6.0, step=0.1), 1)
             # MBConv: t, c, s, k
             args=[t,c,m_stride,kernel]
-            print(args)
+            #print(args)
 
         in_features = out_channel
-        print(block)
+        #print(block)
         model.append([repeat, block, args])
         if i % 2:
             input_max *= 2
