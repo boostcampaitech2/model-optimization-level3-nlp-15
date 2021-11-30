@@ -1,4 +1,9 @@
 data
+_clones
+*.pyc
+*.yaml
+*.yml
+*.pt
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode,linux,python
