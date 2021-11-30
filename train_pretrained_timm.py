@@ -19,9 +19,14 @@ from src.model import Model
 from src.trainer import TorchTrainer
 from src.utils.common import get_label_counts, read_yaml
 from src.utils.torch_utils import check_runtime, model_info
-from adamp import SGDP, AdamP
+
+# import vision pretrained models stuff
+from torchvision import models
 import timm
+
+# import criteria 
 from transformers import AdamW
+from adamp import SGDP, AdamP
 
 class CustomModel(nn.Module):
     def __init__(self, num_garbage_classes: int = 6):
@@ -29,9 +34,8 @@ class CustomModel(nn.Module):
         # Transfer learning to add final layers in the end.
         # Model Comaprison: https://paperswithcode.com/sota/image-classification-on-imagenet
         # self.backbone = models.resnet50(pretrained=True)
-        # self.backbone = models.resnext50_32x4d(pretrained=True)
-        # self.backbone.fc = nn.Linear(in_features=2048, out_features=18, bias=True)
-
+        self.backbone = models.resnext50_32x4d(pretrained=True)
+        self.backbone.fc = nn.Linear(in_features=2048, out_features=num_garbage_classes, bias=True)
 
         # ViT Model Explanation: https://huggingface.co/google/vit-base-patch16-384
         # Pretrained Model SourcE: https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
@@ -40,14 +44,14 @@ class CustomModel(nn.Module):
         # - fixed-size patches: 16, 32               | 이미지가 몇 개로 쪼개져서 들어가는지
         # - in21k: imagenet 21000 classes       | Pretrained Imagenet Dataset의 클래스 개수
 
-        self.model = timm.create_model("swin_base_patch4_window7_224", pretrained=True)
+        # self.model = timm.create_model("swin_base_patch4_window7_224", pretrained=True, num_classes=num_garbage_classes)
         
         # replacing the last Linear layer with the defined problem's number of classes
-        num_input_features = self.model.head.in_features # pretrained model's default fully connected Linear Layer
-        self.model.head = nn.Linear(in_features=num_input_features, out_features=num_garbage_classes, bias=True)  # replacing output with 18
+        # num_input_features = self.model.head.in_features # pretrained model's default fully connected Linear Layer
+        # self.model.head = nn.Linear(in_features=num_input_features, out_features=num_garbage_classes, bias=True)  # replacing output with 18
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.model(x)
+        x = self.backbone(x)
         return x
 
 def train(
@@ -61,7 +65,7 @@ def train(
     with open(os.path.join(log_dir, "data.yml"), "w") as f:
         yaml.dump(data_config, f, default_flow_style=False)
     
-    timm_model = CustomModel()
+    custom_model = CustomModel().to(device)
     model_path = os.path.join(log_dir, "best_teacher.pt")
     print(f"Model save path: {model_path}")
     
@@ -71,7 +75,7 @@ def train(
 
     # Create optimizer, scheduler, criterion
     optimizer = AdamW(
-        timm_model.parameters(), lr=data_config["INIT_LR"], momentum=0.9
+       custom_model.parameters(), lr=data_config["INIT_LR"], eps=1e-8
     )
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer=optimizer,
@@ -93,7 +97,7 @@ def train(
 
     # Create trainer
     trainer = TorchTrainer(
-        model=timm_model,
+        model=custom_model,
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
@@ -110,7 +114,7 @@ def train(
 
     # evaluate model with test set
     test_loss, test_f1, test_acc = trainer.test(
-        model=timm_model, test_dataloader=val_dl if val_dl else test_dl
+        model=custom_model, test_dataloader=val_dl if val_dl else test_dl
     )
     return test_loss, test_f1, test_acc
 
@@ -124,7 +128,7 @@ if __name__ == "__main__":
         help="model config",
     )
     parser.add_argument(
-        "--data", default="configs/data/taco.yaml", type=str, help="data config"
+        "--data", default="configs/data/taco_teacher.yaml", type=str, help="data config"
     )
     args = parser.parse_args()
 
@@ -136,7 +140,7 @@ if __name__ == "__main__":
     log_dir = os.environ.get("SM_MODEL_DIR", os.path.join("exp", 'latest'))
 
     if os.path.exists(log_dir): 
-        modified = datetime.fromtimestamp(os.path.getmtime(log_dir + '/best.pt'))
+        modified = datetime.fromtimestamp(os.path.getmtime(log_dir + '/best_teacher.pt'))
         new_log_dir = os.path.dirname(log_dir) + '/' + modified.strftime("%Y-%m-%d_%H-%M-%S")
         os.rename(log_dir, new_log_dir)
 
