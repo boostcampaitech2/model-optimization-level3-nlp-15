@@ -52,11 +52,9 @@ def train(
     for i in range(len(model_state_keys)):
         model_state = model_state_keys[i]
         pretrained_weight_state = state_dict_keys[i]
-        teacher_weight["model." + model_state] = teacher_state_dict[
-            pretrained_weight_state
-        ]
+        teacher_weight[model_state] = teacher_state_dict[pretrained_weight_state]
 
-    teacher_model_instance.load_state_dict(teacher_weight)
+    teacher_model_instance.model.load_state_dict(teacher_weight)
 
     model_path = os.path.join(log_dir, "best.pt")
     print(f"Model save path: {model_path}")
@@ -128,7 +126,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train model.")
     parser.add_argument(
         "--student_model",
-        default="configs/model/mobilenet_.yaml",
+        default="configs/model/mbconv.yaml",
         type=str,
         help="student model config",
     )
