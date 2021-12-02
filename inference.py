@@ -18,12 +18,12 @@ from tqdm import tqdm
 from src.augmentation.policies import simple_augment_test
 from src.model import Model
 from src.utils.common import read_yaml
-
+from src.decomposition import *
 if torch.__version__ >= "1.8.1":
     from torch import profiler
 else:
     from torch.autograd import profiler
-
+import tensorly as tl
 CLASSES = [
     "Metal",
     "Paper",
@@ -78,6 +78,7 @@ def inference(model, dataloader, dst_path: str, t0: float) -> None:
         t0: initial time prior to creating model and dataset
             by time.monotonic().
     """
+    
     model = model.to(device)
     model.eval()
 
@@ -191,6 +192,7 @@ if __name__ == "__main__":
             torch.load(args.weight, map_location=torch.device("cpu"))
         )
         model = model_instance.model
-
+    tl.set_backend("pytorch")
+    tucker_decompose_model(model)
     # inference
     inference(model, dataloader, args.dst, t0)
