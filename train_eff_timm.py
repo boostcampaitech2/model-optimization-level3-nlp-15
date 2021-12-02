@@ -30,6 +30,37 @@ import glob
 DEBUG = True
 
 
+class LightResnet(nn.Module):
+    def __init__(self):
+        super(LightResnet, self).__init__()
+        self.model = models.resnet18(pretrained=True)
+        del self.model.layer3
+        del self.model.layer4
+
+        # replace fully connected layers
+        self.num_in_features = 128
+        self.model.fc = nn.Linear(self.num_in_features, 6)
+
+    def _forward_impl(self, x):
+        x = self.model.conv1(x)
+        x = self.model.bn1(x)
+        x = self.model.relu(x)
+        x = self.model.maxpool(x)
+
+        x = self.model.layer1(x)
+        x = self.model.layer2(x)
+        # x = self.model.layer3(x)
+        # x = self.model.layer4(x)
+
+        x = self.model.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.model.fc(x)
+        return x
+
+    def forward(self, x):
+        return self._forward_impl(x)
+
+
 def train(
     model_config: Dict[str, Any],
     data_config: Dict[str, Any],
@@ -42,51 +73,19 @@ def train(
     with open(os.path.join(log_dir, "data.yml"), "w") as f:
         yaml.dump(data_config, f, default_flow_style=False)
 
-    # Load model
-    model_architecture = "resnet18"
-    model = models.resnet18(pretrained=True)
-
-    # replace fully connected layers
-    num_in_features = model.fc.in_features
-    model.fc = nn.Linear(num_in_features, 6)
-
-    # check the layer info
-    print("======original model======")
-    print(model_info(model))
-    for child in model.children():
-        print(child)
-
-    # remove last two conv layers from the model
-    # deep copy the model
-    newmodel = model
-    # print last BasicBlock from the model
-    # print("======last BasicBlock======")
-    # print(list(newmodel.children())[-1])
-    # print modules
-    print("======modules======")
-    print(newmodel.modules)
-
-    # remove layer 3 and 4 from the model
-    del newmodel.layer3
-    del newmodel.layer4
-
-    # replace fully connected layers
-    num_in_features = 128
-    newmodel.fc = nn.Linear(num_in_features, 6)
-
+    newmodel = LightResnet()
     print("======changed model======")
     print(model_info(newmodel))
-    for child in newmodel.children():
-        print(child)
 
     # move model to device
+    print(device)
     newmodel.to(device)
 
     # Create dataloader
     train_dl, val_dl, test_dl = create_dataloader(data_config)
-    model_path = os.path.join(log_dir, f"best_teacher_{model_architecture}.pt")
+    model_path = os.path.join(log_dir, f"best_teacher.pt")
     # Create optimizer, scheduler, criterion
-    optimizer = SGDP(model.parameters(), lr=data_config["INIT_LR"], momentum=0.9)
+    optimizer = SGDP(newmodel.parameters(), lr=data_config["INIT_LR"], momentum=0.9)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer=optimizer,
         max_lr=data_config["INIT_LR"],
@@ -105,7 +104,7 @@ def train(
 
     # Create trainer
     trainer = TorchTrainer(
-        model=model,
+        model=newmodel,
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
@@ -123,7 +122,7 @@ def train(
     # evaluate model with test set
     # model_instance.model.load_state_dict(torch.load(model_path))
     test_loss, test_f1, test_acc = trainer.test(
-        model=model, test_dataloader=val_dl if val_dl else test_dl
+        model=newmodel, test_dataloader=val_dl if val_dl else test_dl
     )
     return test_loss, test_f1, test_acc
 
