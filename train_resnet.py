@@ -55,21 +55,23 @@ def train(
     with open(os.path.join(log_dir, "model.yml"), "w") as f:
         yaml.dump(model_config, f, default_flow_style=False)
 
+    # get custom written yaml model
     model_instance = Model(model_config, verbose=True)
     model_path = os.path.join(log_dir, "best.pt")
     print(f"Model save path: {model_path}")
-    state_dict = load_state_dict_from_url(model_urls["resnet18"])
     model_state_dict = model_instance.model.state_dict()
     model_state_keys = [i for i in model_instance.model.state_dict()]
-    print(f"Model state keys: {model_state_keys}")
+
+    # get pretrained model
+    state_dict = load_state_dict_from_url(model_urls["resnet18"])
     state_dict_keys = [i for i in state_dict]
     new_state_dict = OrderedDict()
-
-    for key in state_dict_keys:
-        print(key)
+    print(len(state_dict_keys) == len(model_state_keys))
+    for i in range(len(state_dict_keys)):
+        print("loaded:", f"{state_dict_keys[i]}", "|", "written:", f"{model_state_keys[i]}")
 
     # Pretrained weights
-    for i in range(len(model_state_keys) - 2):
+    for i in range(len(model_state_keys) - 2):  # change number 2 as not CONV
         model_state = model_state_keys[i]
         pretrained_weight_state = state_dict_keys[i]
         new_state_dict[model_state] = state_dict[pretrained_weight_state]
@@ -161,6 +163,6 @@ if __name__ == "__main__":
         model_config=model_config,
         data_config=data_config,
         log_dir=log_dir,
-        fp16=True,
+        fp16=False,
         device=device,
     )

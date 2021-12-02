@@ -27,6 +27,8 @@ from torchvision import models
 import timm
 import glob
 
+DEBUG = True
+
 
 def train(
     model_config: Dict[str, Any],
@@ -40,10 +42,45 @@ def train(
     with open(os.path.join(log_dir, "data.yml"), "w") as f:
         yaml.dump(data_config, f, default_flow_style=False)
 
-    # Model Explanation: https://github.com/rwightman/gen-efficientnet-pytorch
-    model_architecture = "tf_efficientnet_b4"  # "vit_base_patch32_224", "tf_efficientnet_b4"
-    model = timm.create_model(model_architecture, pretrained=True, num_classes=6).to(device)
-    # print(model)
+    # Load model
+    model_architecture = "resnet18"
+    model = models.resnet18(pretrained=True)
+
+    # replace fully connected layers
+    num_in_features = model.fc.in_features
+    model.fc = nn.Linear(num_in_features, 6)
+
+    # check the layer info
+    print("======original model======")
+    print(model_info(model))
+    for child in model.children():
+        print(child)
+
+    # remove last two conv layers from the model
+    # deep copy the model
+    newmodel = model
+    # print last BasicBlock from the model
+    # print("======last BasicBlock======")
+    # print(list(newmodel.children())[-1])
+    # print modules
+    print("======modules======")
+    print(newmodel.modules)
+
+    # remove layer 3 and 4 from the model
+    del newmodel.layer3
+    del newmodel.layer4
+
+    # replace fully connected layers
+    num_in_features = 128
+    newmodel.fc = nn.Linear(num_in_features, 6)
+
+    print("======changed model======")
+    print(model_info(newmodel))
+    for child in newmodel.children():
+        print(child)
+
+    # move model to device
+    newmodel.to(device)
 
     # Create dataloader
     train_dl, val_dl, test_dl = create_dataloader(data_config)
@@ -98,12 +135,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     data_config = read_yaml(cfg=args.data)
-
     data_config["DATA_PATH"] = os.environ.get("SM_CHANNEL_TRAIN", data_config["DATA_PATH"])
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     log_dir = os.environ.get("SM_MODEL_DIR", os.path.join("teacher", "latest"))
-    if os.path.exists(log_dir):
+    if os.path.exists(log_dir) and DEBUG == False:
         # find *.pt file in log_dir
         previous_model_path = glob.glob(os.path.join(log_dir, "*.pt"))[0]
         modified = datetime.fromtimestamp(os.path.getmtime(previous_model_path))

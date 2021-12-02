@@ -4,8 +4,8 @@ depth_multiple: 1.0
 width_multiple: 1.0
 
 # https://arxiv.org/pdf/1512.03385.pdf pg 5
-backbone: [
 # [repeat, module, [channels(64), input size(7x7), stride]]
+backbone: [
 [1, Conv, [64, 7, 2]],
 [1, MaxPool, [3, 2]],
 [2, Bottleneck, [64]], 

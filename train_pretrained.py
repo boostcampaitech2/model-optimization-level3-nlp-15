@@ -36,6 +36,20 @@ model_urls = {
 }
 
 
+model_urls = {
+    # Weights ported from https://github.com/rwightman/pytorch-image-models/
+    "efficientnet_b0": "https://download.pytorch.org/models/efficientnet_b0_rwightman-3dd342df.pth",
+    "efficientnet_b1": "https://download.pytorch.org/models/efficientnet_b1_rwightman-533bc792.pth",
+    "efficientnet_b2": "https://download.pytorch.org/models/efficientnet_b2_rwightman-bcdf34b7.pth",
+    "efficientnet_b3": "https://download.pytorch.org/models/efficientnet_b3_rwightman-cf984f9c.pth",
+    "efficientnet_b4": "https://download.pytorch.org/models/efficientnet_b4_rwightman-7eb33cd5.pth",
+    # Weights ported from https://github.com/lukemelas/EfficientNet-PyTorch/
+    "efficientnet_b5": "https://download.pytorch.org/models/efficientnet_b5_lukemelas-b6417697.pth",
+    "efficientnet_b6": "https://download.pytorch.org/models/efficientnet_b6_lukemelas-c76e70fd.pth",
+    "efficientnet_b7": "https://download.pytorch.org/models/efficientnet_b7_lukemelas-dcc49843.pth",
+}
+
+
 def train(
     model_config: Dict[str, Any],
     data_config: Dict[str, Any],
@@ -53,9 +67,7 @@ def train(
     model_instance = Model(model_config, verbose=True)
     model_path = os.path.join(log_dir, "best.pt")
     print(f"Model save path: {model_path}")
-    state_dict = load_state_dict_from_url(
-        "https://www.dropbox.com/s/9wigibun8n260qm/efficientnet-b0-4cfa50.pth?dl=1"
-    )
+    state_dict = load_state_dict_from_url(model_urls["efficientnet_b0"])
     model_state_dict = model_instance.model.state_dict()
     model_state_keys = [i for i in model_instance.model.state_dict()]
     state_dict_keys = [i for i in state_dict]

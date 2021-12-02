@@ -126,7 +126,7 @@ class TorchTrainer:
         """
         best_test_acc = -1.0
         best_test_f1 = -1.0
-        best_test_loss = 0.8
+        best_test_loss = 1.0
         num_classes = _get_len_label_from_dataset(train_dataloader.dataset)
         label_list = [i for i in range(num_classes)]
 
