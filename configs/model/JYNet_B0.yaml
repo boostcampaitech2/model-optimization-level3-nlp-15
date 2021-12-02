@@ -12,9 +12,9 @@ backbone: [
     [2, MBConv, [6, 40, 2, 5]],
     [3, MBConv, [6, 80, 2, 3]],
     [3, MBConv, [6, 112, 1, 5]],
-    [1, Conv, [672, 1, 1]],
+    [1, Conv, [672, 1, 1]], # 6 x 112
     [1, GlobalAvgPool, []],
     #[1, Conv, [1000, 1, 1, null, 1, null]],
-    [ 1, Flatten, [ ] ],
-    [ 1, Linear, [ 6 ] ]
+    [1, Flatten, []],
+    [1, Linear, [6]],
   ]

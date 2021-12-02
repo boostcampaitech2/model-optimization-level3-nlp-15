@@ -30,9 +30,9 @@ import glob
 DEBUG = True
 
 
-class LightResnet(nn.Module):
+class LightEfficientNet(nn.Module):
     def __init__(self):
-        super(LightResnet, self).__init__()
+        super(LightEfficientNet, self).__init__()
         self.model = models.resnet18(pretrained=True)
         del self.model.layer3
         del self.model.layer4
