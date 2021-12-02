@@ -1,0 +1,19 @@
+input_channel: 3
+
+depth_multiple: 1.0
+width_multiple: 1.0
+
+# https://arxiv.org/pdf/1512.03385.pdf pg 5
+backbone: [
+# [repeat, module, [channels(64), input size(7x7), stride]]
+[1, Conv, [64, 7, 2]],
+[1, MaxPool, [3, 2]],
+[2, ResBottleneck, [64]], 
+[2, ResBottleneck, [128]], 
+[2, ResBottleneck, [256]], 
+[2, ResBottleneck, [512]], 
+[1, GlobalAvgPool, []],
+[1, Flatten, []],
+# [1, Linear, [1000, softmax]]
+[1, Linear, [6, softmax]]
+]
