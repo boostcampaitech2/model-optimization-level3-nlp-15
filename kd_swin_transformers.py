@@ -17,28 +17,19 @@ from collections import OrderedDict
 from src.dataloader import create_dataloader
 from src.loss import CustomCriterion
 from src.model import Model
-from src.trainer import TorchTrainer
+from src.kd_trainer import KDTrainer
 from src.utils.common import get_label_counts, read_yaml
 from src.utils.torch_utils import check_runtime, model_info
 from src.modules.mbconv import MBConvGenerator
 from torch.utils.model_zoo import load_url as load_state_dict_from_url
-from adamp import SGDP
+from transformers import AdamW
 
-
-model_urls = {
-    "efficientnet_b0": "https://www.dropbox.com/s/9wigibun8n260qm/efficientnet-b0-4cfa50.pth?dl=1",
-    "efficientnet_b1": "https://www.dropbox.com/s/6745ear79b1ltkh/efficientnet-b1-ef6aa7.pth?dl=1",
-    "efficientnet_b2": "https://www.dropbox.com/s/0dhtv1t5wkjg0iy/efficientnet-b2-7c98aa.pth?dl=1",
-    "efficientnet_b3": "https://www.dropbox.com/s/5uqok5gd33fom5p/efficientnet-b3-bdc7f4.pth?dl=1",
-    "efficientnet_b4": "https://www.dropbox.com/s/y2nqt750lixs8kc/efficientnet-b4-3e4967.pth?dl=1",
-    "efficientnet_b5": "https://www.dropbox.com/s/qxonlu3q02v9i47/efficientnet-b5-4c7978.pth?dl=1",
-    "efficientnet_b6": None,
-    "efficientnet_b7": None,
-}
 
 
 def train(
-    model_config: Dict[str, Any],
+    student_model_config: Dict[str, Any],
+    teacher_model_config: Dict[str, Any],
+    teacher_path: str,
     data_config: Dict[str, Any],
     log_dir: str,
     fp16: bool,
@@ -49,45 +40,44 @@ def train(
     with open(os.path.join(log_dir, "data.yml"), "w") as f:
         yaml.dump(data_config, f, default_flow_style=False)
     with open(os.path.join(log_dir, "model.yml"), "w") as f:
-        yaml.dump(model_config, f, default_flow_style=False)
+        yaml.dump(student_model_config, f, default_flow_style=False)
 
-    model_instance = Model(model_config, verbose=True)
-    model_path = os.path.join(log_dir, "best.pt")
-    print(f"Model save path: {model_path}")
-    state_dict = load_state_dict_from_url(
-        "https://www.dropbox.com/s/9wigibun8n260qm/efficientnet-b0-4cfa50.pth?dl=1"
-    )
-    model_state_dict = model_instance.model.state_dict()
-    model_state_keys = [i for i in model_instance.model.state_dict()]
-    state_dict_keys = [i for i in state_dict]
-    new_state_dict = OrderedDict()
-    for i in range(len(model_state_keys) - 2):
+    student_model_instance = Model(student_model_config, verbose=True)
+    teacher_model_instance = Model(teacher_model_config, verbose=True)
+    teacher_state_dict = torch.load(teacher_path)
+    teacher_weight = OrderedDict()
+
+    model_state_dict = teacher_model_instance.model.state_dict()
+    model_state_keys = [i for i in teacher_model_instance.model.state_dict()]
+    state_dict_keys = [i for i in teacher_state_dict]
+    for i in range(len(model_state_keys)):
         model_state = model_state_keys[i]
         pretrained_weight_state = state_dict_keys[i]
-        new_state_dict[model_state] = state_dict[pretrained_weight_state]
-    for i in range(len(model_state_keys) - 2, len(model_state_keys)):
-        model_state = model_state_keys[i]
-        new_state_dict[model_state] = model_state_dict[model_state_keys[i]]
+        teacher_weight[model_state] = teacher_state_dict[pretrained_weight_state]
 
-    model_instance.model.load_state_dict(new_state_dict, strict=False)
+    teacher_model_instance.model.load_state_dict(teacher_weight)
+
+    model_path = os.path.join(log_dir, "best.pt")
+    print(f"Model save path: {model_path}")
 
     if os.path.isfile(model_path):
-        model_instance.model.load_state_dict(
+        student_model_instance.model.load_state_dict(
             torch.load(model_path, map_location=device)
         )
-    model_instance.model.to(device)
+    student_model_instance.model.to(device)
+    teacher_model_instance.model.to(device)
 
     # Create dataloader
     train_dl, val_dl, test_dl = create_dataloader(data_config)
 
     # Create optimizer, scheduler, criterion
-    # optimizer = torch.optim.SGD(
-    #     model_instance.model.parameters(), lr=data_config["INIT_LR"], momentum=0.9
+
+    # optimizer = torch.optim.Adam(
+    #     student_model_instance.model.parameters(), lr=data_config["INIT_LR"]
     # )
-    optimizer = SGDP(
-        model_instance.model.parameters(), lr=data_config["INIT_LR"], momentum=0.9
+    optimizer = AdamW(
+       student_model_instance.model.parameters(), lr=data_config["INIT_LR"], eps=1e-8
     )
-    
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer=optimizer,
         max_lr=data_config["INIT_LR"],
@@ -107,8 +97,9 @@ def train(
     )
 
     # Create trainer
-    trainer = TorchTrainer(
-        model=model_instance.model,
+    trainer = KDTrainer(
+        student=student_model_instance.model,
+        teacher=teacher_model_instance.model,
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
@@ -124,9 +115,10 @@ def train(
     )
 
     # evaluate model with test set
-    model_instance.model.load_state_dict(torch.load(model_path))
+    student_model_instance.model.load_state_dict(torch.load(model_path))
     test_loss, test_f1, test_acc = trainer.test(
-        model=model_instance.model, test_dataloader=val_dl if val_dl else test_dl
+        model=student_model_instance.model,
+        test_dataloader=val_dl if val_dl else test_dl,
     )
     return test_loss, test_f1, test_acc
 
@@ -134,17 +126,30 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train model.")
     parser.add_argument(
-        "--model",
+        "--student_model",
+        default="configs/model/mbconv.yaml",
+        type=str,
+        help="student model config",
+    )
+    parser.add_argument(
+        "--teacher_model",
         default="configs/model/effb0_.yaml",
         type=str,
-        help="model config",
+        help="teacher model config",
+    )
+    parser.add_argument(
+        "--weight",
+        default="teacher/latest/best.pt",
+        type=str,
+        help="teacher model weight",
     )
     parser.add_argument(
         "--data", default="configs/data/taco.yaml", type=str, help="data config"
     )
     args = parser.parse_args()
 
-    model_config = read_yaml(cfg=args.model)
+    student_model_config = read_yaml(cfg=args.student_model)
+    teacher_model_config = read_yaml(cfg=args.teacher_model)
     data_config = read_yaml(cfg=args.data)
 
     data_config["DATA_PATH"] = os.environ.get(
@@ -164,7 +169,9 @@ if __name__ == "__main__":
     os.makedirs(log_dir, exist_ok=True)
 
     test_loss, test_f1, test_acc = train(
-        model_config=model_config,
+        student_model_config=student_model_config,
+        teacher_model_config=teacher_model_config,
+        teacher_path=args.weight,
         data_config=data_config,
         log_dir=log_dir,
         fp16=data_config["FP16"],

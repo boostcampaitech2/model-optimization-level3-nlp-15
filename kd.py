@@ -71,12 +71,12 @@ def train(
 
     # Create optimizer, scheduler, criterion
 
-    optimizer = torch.optim.Adam(
-        student_model_instance.model.parameters(), lr=data_config["INIT_LR"]
-    )
-    # optimizer = AdamW(
-    #    student_model_instance.model.parameters(), lr=data_config["INIT_LR"], eps=1e-8
+    # optimizer = torch.optim.Adam(
+    #     student_model_instance.model.parameters(), lr=data_config["INIT_LR"]
     # )
+    optimizer = AdamW(
+       student_model_instance.model.parameters(), lr=data_config["INIT_LR"], eps=1e-8
+    )
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer=optimizer,
         max_lr=data_config["INIT_LR"],

@@ -23,6 +23,7 @@ from src.utils.torch_utils import check_runtime, model_info
 from src.modules.mbconv import MBConvGenerator
 from torch.utils.model_zoo import load_url as load_state_dict_from_url
 from transformers import AdamW
+from adamp import SGDP
 import timm
 
 
@@ -45,19 +46,15 @@ def train(
     teacher_state_dict = torch.load(teacher_path)
 
     ####Change Model Name for TIMM Models ####
-    teacher_model = timm.create_model(
-        "vit_base_patch32_224", pretrained=False, num_classes=6
-    )
+    teacher_model = timm.create_model("tf_efficientnet_b4", pretrained=False, num_classes=6)
+    teacher_model.load_state_dict(teacher_state_dict)  # load teacher model
 
-    teacher_model.load_state_dict(teacher_state_dict)
-
+    # student model
     model_path = os.path.join(log_dir, "best.pt")
     print(f"Model save path: {model_path}")
 
     if os.path.isfile(model_path):
-        student_model_instance.model.load_state_dict(
-            torch.load(model_path, map_location=device)
-        )
+        student_model_instance.model.load_state_dict(torch.load(model_path, map_location=device))
     student_model_instance.model.to(device)
     teacher_model.to(device)
 
@@ -66,12 +63,16 @@ def train(
 
     # Create optimizer, scheduler, criterion
 
-    optimizer = torch.optim.Adam(
-        student_model_instance.model.parameters(), lr=data_config["INIT_LR"]
-    )
+    # optimizer = torch.optim.Adam(
+    #     student_model_instance.model.parameters(), lr=data_config["INIT_LR"]
+    # )
     # optimizer = AdamW(
     #    student_model_instance.model.parameters(), lr=data_config["INIT_LR"], eps=1e-8
     # )
+    optimizer = SGDP(
+        student_model_instance.model.parameters(), lr=data_config["INIT_LR"], momentum=0.9
+    )
+
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer=optimizer,
         max_lr=data_config["INIT_LR"],
@@ -86,9 +87,7 @@ def train(
         device=device,
     )
     # Amp loss scaler
-    scaler = (
-        torch.cuda.amp.GradScaler() if fp16 and device != torch.device("cpu") else None
-    )
+    scaler = torch.cuda.amp.GradScaler() if fp16 and device != torch.device("cpu") else None
 
     # Create trainer
     trainer = KDTrainer(
@@ -127,12 +126,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--weight",
-        default="teacher/latest/best.pt",
+        default="/opt/ml/data/model-optimization-level3-nlp-15/teacher/2021-12-01_05-35-23/best_teacher_tf_efficientnet_b4_loss_065_f1_076.pt",
         type=str,
         help="teacher model weight",
     )
     parser.add_argument(
-        "--data", default="configs/data/taco.yaml", type=str, help="data config"
+        "--data",
+        default="/opt/ml/data/model-optimization-level3-nlp-15/configs/data/taco_kd.yaml",
+        type=str,
+        help="data config",
     )
     args = parser.parse_args()
 
@@ -140,18 +142,14 @@ if __name__ == "__main__":
     # teacher_model_config = read_yaml(cfg=args.teacher_model)
     data_config = read_yaml(cfg=args.data)
 
-    data_config["DATA_PATH"] = os.environ.get(
-        "SM_CHANNEL_TRAIN", data_config["DATA_PATH"]
-    )
+    data_config["DATA_PATH"] = os.environ.get("SM_CHANNEL_TRAIN", data_config["DATA_PATH"])
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     log_dir = os.environ.get("SM_MODEL_DIR", os.path.join("exp", "latest"))
 
     if os.path.exists(log_dir):
         modified = datetime.fromtimestamp(os.path.getmtime(log_dir + "/best.pt"))
-        new_log_dir = (
-            os.path.dirname(log_dir) + "/" + modified.strftime("%Y-%m-%d_%H-%M-%S")
-        )
+        new_log_dir = os.path.dirname(log_dir) + "/" + modified.strftime("%Y-%m-%d_%H-%M-%S")
         os.rename(log_dir, new_log_dir)
 
     os.makedirs(log_dir, exist_ok=True)

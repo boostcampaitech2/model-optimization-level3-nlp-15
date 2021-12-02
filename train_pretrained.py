@@ -60,10 +60,14 @@ def train(
     model_state_keys = [i for i in model_instance.model.state_dict()]
     state_dict_keys = [i for i in state_dict]
     new_state_dict = OrderedDict()
+
+    # Pretrained weights
     for i in range(len(model_state_keys) - 2):
         model_state = model_state_keys[i]
         pretrained_weight_state = state_dict_keys[i]
         new_state_dict[model_state] = state_dict[pretrained_weight_state]
+
+    # Classifier
     for i in range(len(model_state_keys) - 2, len(model_state_keys)):
         model_state = model_state_keys[i]
         new_state_dict[model_state] = model_state_dict[model_state_keys[i]]
@@ -71,9 +75,7 @@ def train(
     model_instance.model.load_state_dict(new_state_dict, strict=False)
 
     if os.path.isfile(model_path):
-        model_instance.model.load_state_dict(
-            torch.load(model_path, map_location=device)
-        )
+        model_instance.model.load_state_dict(torch.load(model_path, map_location=device))
     model_instance.model.to(device)
 
     # Create dataloader
@@ -97,9 +99,7 @@ def train(
         device=device,
     )
     # Amp loss scaler
-    scaler = (
-        torch.cuda.amp.GradScaler() if fp16 and device != torch.device("cpu") else None
-    )
+    scaler = torch.cuda.amp.GradScaler() if fp16 and device != torch.device("cpu") else None
 
     # Create trainer
     trainer = TorchTrainer(
@@ -130,30 +130,24 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train model.")
     parser.add_argument(
         "--model",
-        default="configs/model/effb0_.yaml",
+        default="/opt/ml/data/model-optimization-level3-nlp-15/configs/model/effb0_.yaml",
         type=str,
         help="model config",
     )
-    parser.add_argument(
-        "--data", default="configs/data/taco.yaml", type=str, help="data config"
-    )
+    parser.add_argument("--data", default="configs/data/taco.yaml", type=str, help="data config")
     args = parser.parse_args()
 
     model_config = read_yaml(cfg=args.model)
     data_config = read_yaml(cfg=args.data)
 
-    data_config["DATA_PATH"] = os.environ.get(
-        "SM_CHANNEL_TRAIN", data_config["DATA_PATH"]
-    )
+    data_config["DATA_PATH"] = os.environ.get("SM_CHANNEL_TRAIN", data_config["DATA_PATH"])
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     log_dir = os.environ.get("SM_MODEL_DIR", os.path.join("exp", "latest"))
 
     if os.path.exists(log_dir):
         modified = datetime.fromtimestamp(os.path.getmtime(log_dir + "/best.pt"))
-        new_log_dir = (
-            os.path.dirname(log_dir) + "/" + modified.strftime("%Y-%m-%d_%H-%M-%S")
-        )
+        new_log_dir = os.path.dirname(log_dir) + "/" + modified.strftime("%Y-%m-%d_%H-%M-%S")
         os.rename(log_dir, new_log_dir)
 
     os.makedirs(log_dir, exist_ok=True)
@@ -162,6 +156,6 @@ if __name__ == "__main__":
         model_config=model_config,
         data_config=data_config,
         log_dir=log_dir,
-        fp16=data_config["FP16"],
+        fp16=True,
         device=device,
     )

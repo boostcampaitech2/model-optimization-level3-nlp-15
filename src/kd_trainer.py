@@ -37,7 +37,7 @@ def metric_batch(output, target):
 
 
 def distill_loss_batch(output, target, teacher_output, loss_fn=distillation):
-    loss_b = loss_fn(output, target, teacher_output, T=20.0, alpha=0.7)
+    loss_b = loss_fn(output, target, teacher_output, T=8.0, alpha=0.5)
     metric_b = metric_batch(output, target)
 
     return loss_b, metric_b
@@ -169,9 +169,7 @@ class KDTrainer:
                 teacher_output = self.teacher(data)
                 outputs = torch.squeeze(outputs)
 
-                loss, _ = distill_loss_batch(
-                    outputs, labels, teacher_output, loss_fn=distillation
-                )
+                loss, _ = distill_loss_batch(outputs, labels, teacher_output, loss_fn=distillation)
 
                 self.optimizer.zero_grad()
 
@@ -200,9 +198,7 @@ class KDTrainer:
                 )
             pbar.close()
 
-            _, test_f1, test_acc = self.test(
-                model=self.student, test_dataloader=val_dataloader
-            )
+            _, test_f1, test_acc = self.test(model=self.student, test_dataloader=val_dataloader)
             if best_test_f1 > test_f1:
                 continue
             best_test_acc = test_acc
@@ -218,9 +214,7 @@ class KDTrainer:
         return best_test_acc, best_test_f1
 
     @torch.no_grad()
-    def test(
-        self, model: nn.Module, test_dataloader: DataLoader
-    ) -> Tuple[float, float, float]:
+    def test(self, model: nn.Module, test_dataloader: DataLoader) -> Tuple[float, float, float]:
         """Test model.
 
         Args:
@@ -269,9 +263,7 @@ class KDTrainer:
             )
         loss = running_loss / len(test_dataloader)
         accuracy = correct / total
-        f1 = f1_score(
-            y_true=gt, y_pred=preds, labels=label_list, average="macro", zero_division=0
-        )
+        f1 = f1_score(y_true=gt, y_pred=preds, labels=label_list, average="macro", zero_division=0)
         return loss, f1, accuracy
 
 

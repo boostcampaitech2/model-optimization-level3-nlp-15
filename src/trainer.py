@@ -126,6 +126,7 @@ class TorchTrainer:
         """
         best_test_acc = -1.0
         best_test_f1 = -1.0
+        best_test_loss = 0.8
         num_classes = _get_len_label_from_dataset(train_dataloader.dataset)
         label_list = [i for i in range(num_classes)]
 
@@ -172,11 +173,13 @@ class TorchTrainer:
                 )
             pbar.close()
 
-            _, test_f1, test_acc = self.test(
+            test_loss, test_f1, test_acc = self.test(
                 model=self.model, test_dataloader=val_dataloader
             )
-            if best_test_f1 > test_f1:
+            if best_test_loss < test_loss:
                 continue
+            # else
+            best_test_loss = test_loss
             best_test_acc = test_acc
             best_test_f1 = test_f1
             print(f"Model saved. Current best test f1: {best_test_f1:.3f}")
@@ -190,9 +193,7 @@ class TorchTrainer:
         return best_test_acc, best_test_f1
 
     @torch.no_grad()
-    def test(
-        self, model: nn.Module, test_dataloader: DataLoader
-    ) -> Tuple[float, float, float]:
+    def test(self, model: nn.Module, test_dataloader: DataLoader) -> Tuple[float, float, float]:
         """Test model.
 
         Args:
@@ -241,9 +242,7 @@ class TorchTrainer:
             )
         loss = running_loss / len(test_dataloader)
         accuracy = correct / total
-        f1 = f1_score(
-            y_true=gt, y_pred=preds, labels=label_list, average="macro", zero_division=0
-        )
+        f1 = f1_score(y_true=gt, y_pred=preds, labels=label_list, average="macro", zero_division=0)
         return loss, f1, accuracy
 
 

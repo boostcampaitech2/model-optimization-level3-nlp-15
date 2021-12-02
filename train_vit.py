@@ -22,19 +22,10 @@ from src.utils.common import get_label_counts, read_yaml
 from src.utils.torch_utils import check_runtime, model_info
 from src.modules.mbconv import MBConvGenerator
 from torch.utils.model_zoo import load_url as load_state_dict_from_url
+from adamp import SGDP
+from torchvision import models
 import timm
-
-
-model_urls = {
-    "efficientnet_b0": "https://www.dropbox.com/s/9wigibun8n260qm/efficientnet-b0-4cfa50.pth?dl=1",
-    "efficientnet_b1": "https://www.dropbox.com/s/6745ear79b1ltkh/efficientnet-b1-ef6aa7.pth?dl=1",
-    "efficientnet_b2": "https://www.dropbox.com/s/0dhtv1t5wkjg0iy/efficientnet-b2-7c98aa.pth?dl=1",
-    "efficientnet_b3": "https://www.dropbox.com/s/5uqok5gd33fom5p/efficientnet-b3-bdc7f4.pth?dl=1",
-    "efficientnet_b4": "https://www.dropbox.com/s/y2nqt750lixs8kc/efficientnet-b4-3e4967.pth?dl=1",
-    "efficientnet_b5": "https://www.dropbox.com/s/qxonlu3q02v9i47/efficientnet-b5-4c7978.pth?dl=1",
-    "efficientnet_b6": None,
-    "efficientnet_b7": None,
-}
+import glob
 
 
 def train(
@@ -51,17 +42,16 @@ def train(
     with open(os.path.join(log_dir, "model.yml"), "w") as f:
         yaml.dump(model_config, f, default_flow_style=False)
 
-    model = timm.create_model(
-        "vit_base_patch32_224", pretrained=True, num_classes=6
-    ).to(device)
+    # Model Explanation: https://github.com/rwightman/gen-efficientnet-pytorch
+    model_architecture = "swsl_resnext50_32x4d"  # "vit_base_patch32_224", "tf_efficientnet_b4"
+    model = timm.create_model(model_architecture, pretrained=True, num_classes=6).to(device)
+    # print(model)
 
     # Create dataloader
     train_dl, val_dl, test_dl = create_dataloader(data_config)
-    model_path = os.path.join(log_dir, "best.pt")
+    model_path = os.path.join(log_dir, f"best_teacher_{model_architecture}.pt")
     # Create optimizer, scheduler, criterion
-    optimizer = torch.optim.SGD(
-        model.parameters(), lr=data_config["INIT_LR"], momentum=0.9
-    )
+    optimizer = SGDP(model.parameters(), lr=data_config["INIT_LR"], momentum=0.9)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer=optimizer,
         max_lr=data_config["INIT_LR"],
@@ -76,9 +66,7 @@ def train(
         device=device,
     )
     # Amp loss scaler
-    scaler = (
-        torch.cuda.amp.GradScaler() if fp16 and device != torch.device("cpu") else None
-    )
+    scaler = torch.cuda.amp.GradScaler() if fp16 and device != torch.device("cpu") else None
 
     # Create trainer
     trainer = TorchTrainer(
@@ -113,26 +101,21 @@ if __name__ == "__main__":
         type=str,
         help="model config",
     )
-    parser.add_argument(
-        "--data", default="configs/data/taco.yaml", type=str, help="data config"
-    )
+    parser.add_argument("--data", default="configs/data/taco.yaml", type=str, help="data config")
     args = parser.parse_args()
 
     model_config = read_yaml(cfg=args.model)
     data_config = read_yaml(cfg=args.data)
 
-    data_config["DATA_PATH"] = os.environ.get(
-        "SM_CHANNEL_TRAIN", data_config["DATA_PATH"]
-    )
+    data_config["DATA_PATH"] = os.environ.get("SM_CHANNEL_TRAIN", data_config["DATA_PATH"])
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     log_dir = os.environ.get("SM_MODEL_DIR", os.path.join("teacher", "latest"))
-
     if os.path.exists(log_dir):
-        modified = datetime.fromtimestamp(os.path.getmtime(log_dir + "/best.pt"))
-        new_log_dir = (
-            os.path.dirname(log_dir) + "/" + modified.strftime("%Y-%m-%d_%H-%M-%S")
-        )
+        # find *.pt file in log_dir
+        previous_model_path = glob.glob(os.path.join(log_dir, "*.pt"))[0]
+        modified = datetime.fromtimestamp(os.path.getmtime(previous_model_path))
+        new_log_dir = os.path.dirname(log_dir) + "/" + modified.strftime("%Y-%m-%d_%H-%M-%S")
         os.rename(log_dir, new_log_dir)
 
     os.makedirs(log_dir, exist_ok=True)

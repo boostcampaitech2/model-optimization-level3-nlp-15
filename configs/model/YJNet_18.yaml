@@ -10,11 +10,10 @@ backbone: [
 [1, MaxPool, [3, 2]],
 [2, Bottleneck, [64]], 
 [2, Bottleneck, [128]], 
-[2, Bottleneck, [256]], 
-[2, Bottleneck, [512]], 
+# [2, Bottleneck, [256]], 
+# [2, Bottleneck, [512]], 
 [1, GlobalAvgPool, []],
 [1, Flatten, []],
 # [1, Linear, [1000, softmax]]
-# [1, Linear, [6, softmax]]
-[1, Linear, [6]], # no softmax needed since torchvision models were trained usingnn.CrossEntropyLoss which consists of nn.LogSoftmax and then nn.NLLLoss
+[1, Linear, [6, softmax]]
 ]
